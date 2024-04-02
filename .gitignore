@@ -1,0 +1,5 @@
+gen_names/__pycache__/
+gen_names/models/__pycache__/
+datasets/names/
+outputs/
+gen_names/models/true_model.py

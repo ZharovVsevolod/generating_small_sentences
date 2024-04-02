@@ -1,0 +1,6 @@
+defaults:
+  - base_rop
+
+name: ReduceOnPlateau
+patience: 30
+factor: 0.1

@@ -1,0 +1,5 @@
+defaults:
+  - base_oclr
+
+name: OneCycleLR
+expand_lr: 50
