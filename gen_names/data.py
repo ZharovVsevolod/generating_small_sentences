@@ -63,7 +63,7 @@ class CharTokenizer():
     def decode(self, text_idx:List[int]) -> str:
         text = ""
         for index in text_idx:
-            if index not in [0, 1, 3]:
+            if index not in [1, 3]:
                 text += list(self.dictionary.keys())[list(self.dictionary.values()).index(index)]
         return text
 

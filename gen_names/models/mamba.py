@@ -305,7 +305,12 @@ class Mamba_Lightning(L.LightningModule):
 
         names_target = [self.tokenizer.decode(name_idx.cpu().numpy()) for name_idx in y_hat]
 
-        bleu_score = self.metric(model_answer, names_target)
+        try:
+            bleu_score = self.metric(model_answer, names_target)
+        except:
+            print(model_answer)
+            print(names_target)
+            bleu_score = self.metric(model_answer, names_target)
         return bleu_score
 
     def lr_scheduler(self, optimizer):

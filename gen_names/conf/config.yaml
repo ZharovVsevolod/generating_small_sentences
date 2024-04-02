@@ -2,8 +2,8 @@ training:
   project_name: gen_names
   train_name: mamba
   seed: 1702
-  epochs: 100
-  batch: 32
+  epochs: 300
+  batch: 256
   lr: 3e-4
   model_path: /weights
   wandb_path: /wandb
