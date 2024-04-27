@@ -13,6 +13,11 @@ class MambaModel(Model):
     d_conv: int
 
 @dataclass
+class LSTMModel(Model):
+    hidden_state: int
+    dropout: float
+
+@dataclass
 class Scheduler:
     name: str
 
@@ -45,8 +50,17 @@ class Training:
     early_stopping_patience: int
 
 @dataclass
+class Generation:
+    temperature: float
+    alpha: float
+    train_reweight: bool
+    val_reweight: bool
+    beamsize: int
+
+@dataclass
 class Params:
     model: Model
     data: Data
     training: Training
     scheduler: Scheduler
+    generation: Generation

@@ -1,5 +1,8 @@
 gen_names/__pycache__/
 gen_names/models/__pycache__/
-datasets/names/
 outputs/
-gen_names/models/true_model.py
+.env
+tests/hydra_tests.py
+tests/test_data.py
+tests/test_torch.py
+tests/test_true_and_my_mamba.py

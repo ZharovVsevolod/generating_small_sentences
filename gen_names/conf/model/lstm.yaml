@@ -1,0 +1,9 @@
+defaults:
+  - base_lstm
+
+name: lstm
+vocab_size: 32
+embedding_dim: 64
+num_layers: 2
+hidden_state: 128
+dropout: 0.2

@@ -1,7 +1,7 @@
 defaults:
   - base_mamba
 
-name: mamba
+name: true_mamba
 vocab_size: 32
 embedding_dim: 64
 num_layers: 8

@@ -141,6 +141,7 @@ class NamesDataModule(L.LightningDataModule):
                 names = file.read().split('\n')
 
                 names = [name.split(",")[:2] for name in names] # "Alice,F,26" -> ["Alice", "F"]
+                names = [name for name in names if name[0] != ""]
                 names = [name[-1] + name[0].lower() for name in names] # ["Alice", "F", "26"] -> "Falice"
                 names = [self.tokenizer.encode(name, bos=True, eos=True) for name in names] # "Falice" -> [1, 31, 4, 15, 12, 6, 8, 3]
 
