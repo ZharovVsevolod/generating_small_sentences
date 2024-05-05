@@ -1,3 +1,4 @@
+from typing import Literal
 import torch
 import heapq
 import numpy as np
@@ -28,12 +29,28 @@ class BeamGenerator:
             - сгенерированное продолжение предложения
         
     """
-    def __init__(self, model, tokenizer, device='cuda', eos_token_id=3):
+    def __init__(
+            self, 
+            model, 
+            tokenizer, 
+            device:Literal["cuda", "cpu"] = 'cuda', 
+            eos_token_id:int = 3,
+            min_lenght:int = 4,
+            pad_value:int = 0
+        ):
         self.model = model
         self.tokenizer = tokenizer
         self.device = torch.device(device)
         self.model.to(self.device)
         self.eos_token_id = eos_token_id
+        self.chunk_lenght = min_lenght
+        self.pad_value = pad_value
+    
+    def ensure_length(self, txt:str) -> str:
+        if len(txt) < self.chunk_lenght:
+            txt = list(txt) + [self.pad_value] * (self.chunk_lenght - len(txt))
+        
+        return txt
     
     def reweight(self, original, temperature=0.5, alpha=0):
         """
@@ -46,20 +63,26 @@ class BeamGenerator:
         :param alpha: - параметр альфа
         :return: новое распределение весов
         """
-        # Перевод массива весов в numpy
-        # original = original.cpu().detach().numpy()
-
         # Если есть параметр альфа, его применяем по формуле
         if alpha != 0:
             original = (1 - alpha) * original + alpha / len(original)
         # Делим логарифм весов на температуру для усреднения весов, сила которого зависит от температуры
-        distribution = np.log(original) / temperature
+        distribution = original / temperature
 
-        # Перевод перевзвешенного массива весов обратно в тензор
-        # distribution = torch.tensor(distribution).to(self.device)
         return distribution
 
-    def __call__(self, seed_text, max_steps_n=40, return_hypotheses_n=5, beamsize=5, temperature=0.5, alpha=0, need_reweight=False, without_score=False, need_to_encode=True):
+    def __call__(
+            self, 
+            seed_text, 
+            max_steps_n=40, 
+            return_hypotheses_n=5, 
+            beamsize=5, 
+            temperature=0.5, 
+            alpha=0, 
+            need_reweight=False, 
+            without_score=False, 
+            need_to_encode=True
+        ):
         # При необходимости переводим предложение из символов в токены
         if need_to_encode:
             seed_tokens = self.tokenizer.encode([seed_text])
@@ -75,7 +98,15 @@ class BeamGenerator:
             cur_partial_score, cur_partial_hypothesis = heapq.heappop(partial_hypotheses)
             
             # Генерируем первый токен
-            in_batch = torch.tensor(cur_partial_hypothesis).unsqueeze(0).to(self.device)
+            in_batch = torch.tensor(cur_partial_hypothesis)
+            # ------------------------------------------------------
+            # Здесь мы добавляем паддингом до необходимой длины, чтобы conv в модели не грохнулся
+            # ------------------------------------------------------
+            # in_batch = self.ensure_length(in_batch)
+            in_batch = torch.Tensor(in_batch).to(torch.int).to(self.device)
+            in_batch = in_batch.unsqueeze(0)
+            # ------------------------------------------------------
+            # ------------------------------------------------------
             next_tokens_logits = self.model(in_batch)[0, -1]
 
             # При необходимости перевзвешиваем веса
@@ -87,7 +118,7 @@ class BeamGenerator:
                 next_tokens_logits = self.reweight(next_tokens_logits, temperature, alpha)
             
             # Выбираем топ-beamsize лучших вариантов токенов по весам
-            next_tokens_logproba = F.log_softmax(next_tokens_logits)
+            next_tokens_logproba = F.log_softmax(next_tokens_logits, dim=-1)
             topk_continuations = next_tokens_logproba.topk(beamsize)
 
             for token_score, token_idx in zip(topk_continuations.values, topk_continuations.indices):
@@ -116,7 +147,7 @@ class BeamGenerator:
                 heapq.heapify(partial_hypotheses)
 
         final_scores, final_token_lists = zip(*final_hypotheses)
-        final_texts = self.tokenizer.decode(list(final_token_lists))
+        final_texts = self.tokenizer.decode_many(list(final_token_lists))
 
         result = list(zip(final_scores, final_texts))
         result.sort()

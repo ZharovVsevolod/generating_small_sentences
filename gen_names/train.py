@@ -2,7 +2,7 @@ import hydra
 from hydra.core.config_store import ConfigStore
 
 from gen_names.config import Params, MambaModel, LSTMModel, Scheduler_ReduceOnPlateau, Scheduler_OneCycleLR
-from gen_names.models.shell import Model_Lightning_Shell
+from gen_names.models.shell import Model_Lightning_Shell, NameGenLogging
 from gen_names.data import NamesDataModule
 
 import lightning as L
@@ -44,12 +44,13 @@ def main(cfg: Params) -> None:
 
     checkpoint = ModelCheckpoint(
         dirpath = cfg.training.model_path,
-        filename = "epoch_{epoch}-{val_loss:.2f}-{val_bleu:.2f}",
+        filename = "epoch_{epoch}-{val_loss:.3f}",
         save_top_k = cfg.training.save_best_of,
         monitor = cfg.training.checkpoint_monitor
     )
     lr_monitor = LearningRateMonitor(logging_interval = "epoch")
     early_stop = EarlyStopping(monitor = cfg.training.checkpoint_monitor, patience = cfg.training.early_stopping_patience)
+    gen_names_logger = NameGenLogging()
 
     trainer = L.Trainer(
         max_epochs = cfg.training.epochs,
@@ -57,8 +58,8 @@ def main(cfg: Params) -> None:
         log_every_n_steps = 500,
         devices = 1,
         logger = wandb_log,
-        callbacks = [checkpoint, lr_monitor, early_stop],
-        fast_dev_run = 5
+        callbacks = [checkpoint, lr_monitor, early_stop, gen_names_logger],
+        # fast_dev_run = 5
     )
     trainer.fit(model = model, datamodule = dm)
 

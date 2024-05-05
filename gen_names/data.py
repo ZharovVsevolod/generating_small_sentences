@@ -66,6 +66,13 @@ class CharTokenizer():
             if index not in [1, 3]:
                 text += list(self.dictionary.keys())[list(self.dictionary.values()).index(index)]
         return text
+    
+    def decode_many(self, texts:List[List[int]]) -> List[str]:
+        answer = []
+        for text in texts:
+            tmp = self.decode(text)
+            answer.append(tmp)
+        return answer
 
 class NamesDataset(Dataset):
     def __init__(self, names_encoded:List[List[int]], chunk_lenght:int = 16, pad_value:int = 0) -> None:

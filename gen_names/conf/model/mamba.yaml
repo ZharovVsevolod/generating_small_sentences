@@ -1,9 +1,9 @@
 defaults:
   - base_mamba
 
-name: mamba
+name: true_mamba
 vocab_size: 32
 embedding_dim: 64
-num_layers: 8
+num_layers: 4
 inner_dim: 128
-d_conv: 4
+d_conv: 1

@@ -1,15 +1,15 @@
 training:
   project_name: gen_names
-  train_name: mamba-true
+  train_name: true_mamba
   seed: 1702
-  epochs: 50
-  batch: 4
+  epochs: 30
+  batch: 1024
   lr: 3e-6
   model_path: ${hydra:run.dir}/weights
   wandb_path: ${hydra:run.dir}/wandb
   save_best_of: 3
   checkpoint_monitor: val_loss
-  early_stopping_patience: 10
+  early_stopping_patience: 8
 
 data:
   data_directory: datasets/names
@@ -18,6 +18,6 @@ data:
 generation:
   temperature: 0.5
   alpha: 0.05
-  train_reweight: True
+  train_reweight: False
   val_reweight: True
   beamsize: 5

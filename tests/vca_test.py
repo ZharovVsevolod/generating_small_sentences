@@ -55,4 +55,4 @@ def full_data_vca():
 
 
 if __name__ == "__main__":
-    full_data_vca()
+    test_names_vca()

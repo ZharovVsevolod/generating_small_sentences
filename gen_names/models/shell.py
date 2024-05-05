@@ -1,9 +1,10 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 import lightning as L
 from lightning.pytorch.utilities.types import STEP_OUTPUT, OptimizerLRScheduler
 from typing import Literal
-from torchmetrics.text import BLEUScore
+from torchmetrics.text import BLEUScore, CharErrorRate
 from gen_names.config import Params
 from gen_names.data import CharTokenizer
 
@@ -46,7 +47,9 @@ class Model_Lightning_Shell(L.LightningModule):
                 print("Support of Transformer model will be added in the future")
                 assert True, "Transformer is not supported now"
 
-        self.metric = BLEUScore()
+        self.metric = CharErrorRate()
+        self.vca = VowelsConsonantsAlternation_Metric()
+
         if tokenizer is not None:
             self.tokenizer = tokenizer
         else:
@@ -57,7 +60,6 @@ class Model_Lightning_Shell(L.LightningModule):
 
         #-----
         self.args = args
-
         self.save_hyperparameters()
     
     def forward(self, x) -> torch.Any:
@@ -69,14 +71,19 @@ class Model_Lightning_Shell(L.LightningModule):
         actual_loss = F.cross_entropy(y_flat, y_hat_flat, ignore_index=self.pad_value)
         return actual_loss
     
-    def compute_bleu_score(self, y, y_hat):
+    def compute_metric_score(self, y, y_hat, name = Literal["metric", "vca"]):
         model_answer = torch.argmax(y, dim=-1).cpu().numpy()
         model_answer = [self.tokenizer.decode(name_idx) for name_idx in model_answer]
 
         names_target = [self.tokenizer.decode(name_idx.cpu().numpy()) for name_idx in y_hat]
-
-        bleu_score = self.metric(model_answer, names_target)
-        return bleu_score
+        if name == "vca":
+            score = []
+            for answer in model_answer:
+                score.append(self.vca(answer))
+            score = np.average(score)
+        if name == "metric":
+            score = self.metric(model_answer, names_target)
+        return score
     
     def reweight(self, original):
         alpha = self.args.generation.alpha
@@ -85,8 +92,12 @@ class Model_Lightning_Shell(L.LightningModule):
         # Если есть параметр альфа, его применяем по формуле
         if alpha != 0:
             original = torch.mul(original, (1 - alpha)) + alpha / len(original)
-        # Делим логарифм весов на температуру для усреднения весов, сила которого зависит от температуры
-        distribution = torch.log(original) / temperature
+
+        # Делим `логарифм` весов на температуру для усреднения весов, сила которого зависит от температуры
+        #-----------------------------------------------------
+        # А нахрена здесь "логарифм" весов?
+        #-----------------------------------------------------
+        distribution = original / temperature
 
         return distribution
 
@@ -121,10 +132,14 @@ class Model_Lightning_Shell(L.LightningModule):
         #--------------------------------------------------
 
         answer_loss = self.loss(y, y_hat)
-        bleu_score = self.compute_bleu_score(y, y_hat)
+        score = self.compute_metric_score(y, y_hat, name = "metric")
+        vca_score = self.compute_metric_score(y, y_hat, name = "vca")
 
         self.log("train_loss", answer_loss)
-        self.log("train_bleu", bleu_score)
+        self.log("train_charerr", score)
+        self.log("train_vca", vca_score)
+
+        return answer_loss
     
     def validation_step(self, batch) -> STEP_OUTPUT:
         x, y_hat = batch
@@ -138,10 +153,12 @@ class Model_Lightning_Shell(L.LightningModule):
         #--------------------------------------------------
 
         answer_loss = self.loss(y, y_hat)
-        bleu_score = self.compute_bleu_score(y, y_hat)
+        score = self.compute_metric_score(y, y_hat, name = "metric")
+        vca_score = self.compute_metric_score(y, y_hat, name = "vca")
 
         self.log("val_loss", answer_loss)
-        self.log("val_bleu", bleu_score)
+        self.log("val_charerr", score)
+        self.log("val_vca", vca_score)
     
     def test_step(self, batch) -> STEP_OUTPUT:
         x, y_hat = batch
@@ -155,10 +172,12 @@ class Model_Lightning_Shell(L.LightningModule):
         #--------------------------------------------------
 
         answer_loss = self.loss(y, y_hat)
-        bleu_score = self.compute_bleu_score(y, y_hat)
+        score = self.compute_metric_score(y, y_hat, name = "metric")
+        vca_score = self.compute_metric_score(y, y_hat, name = "vca")
 
         self.log("test_loss", answer_loss)
-        self.log("test_bleu", bleu_score)
+        self.log("test_charerr", score)
+        self.log("test_vca", vca_score)
     
     def configure_optimizers(self) -> OptimizerLRScheduler:
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=0.1)
@@ -169,7 +188,7 @@ class Model_Lightning_Shell(L.LightningModule):
 
 
 class NameGenLogging(L.Callback):
-    def __init__(self, beamsize:int = 5) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self.male_name_start = "M"
         self.female_name_start = "F"
@@ -193,22 +212,32 @@ class NameGenLogging(L.Callback):
         )
         return gens
 
+    def generation_and_log(self, pl_module: Model_Lightning_Shell, stage: Literal["train", "val"]):
+        if pl_module.args.model.name == "mamba" or pl_module.args.model.name == "true_mamba":
+            min_len = pl_module.args.model.d_conv
+        else:
+            min_len = 1
 
-    def generation_and_log(self, pl_module: Model_Lightning_Shell):
-        beam_gen = BeamGenerator(pl_module, pl_module.tokenizer)
+        beam_gen = BeamGenerator(
+            model = pl_module, 
+            tokenizer = pl_module.tokenizer,
+            eos_token_id = 3,
+            min_lenght = min_len,
+            pad_value = pl_module.tokenizer.pad_value
+        )
 
         male_gens = self.generation(beam_gen, pl_module, male = True)
         female_gens = self.generation(beam_gen, pl_module, male = False)
 
-        pl_module.logger.log_text(key = "Gen names", colums = ["male", "female"], data = [male_gens, female_gens])
+        pl_module.logger.log_text(key = f"Gen names {stage}", columns = ["male", "female"], data = [male_gens, female_gens])
     
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        self.generation_and_log(pl_module)
+        self.generation_and_log(pl_module, stage = "val")
     
     def on_train_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        self.generation_and_log(pl_module)
+        self.generation_and_log(pl_module, stage = "train")
 
-class VowelsConsonantsAlternation_Metric(object):
+class VowelsConsonantsAlternation_Metric:
     """Метрика для подсчёта, насколько читаемо получилось слово\n
     Метрика для подсчёта числового значения читаемости слова через соотношения переходов гласных и согласных.\n
     Формула: 
@@ -266,9 +295,11 @@ class VowelsConsonantsAlternation_Metric(object):
         try:
             metric = (1 / len(word)) * (sum_plus) / (sum_minus + 1)
         except Exception as error:
-            print(word_orig)
-            print(word)
-            print(error)
-
+            if len(word) == 0:
+                metric = 0.0
+            else:
+                print(word_orig)
+                print(word)
+                print(error)
 
         return metric
