@@ -1,6 +1,6 @@
 training:
   project_name: gen_names
-  train_name: true_mamba
+  train_name: transformer
   seed: 1702
   epochs: 30
   batch: 1024

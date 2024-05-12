@@ -12,6 +12,7 @@ from gen_names.models.true_model import Mamba as MB_true
 from gen_names.models.true_model import ModelArgs
 from gen_names.models.mamba import Mamba
 from gen_names.models.lstm import LSTM
+from gen_names.models.transformer import Transformer_Model
 
 from gen_names.generators import BeamGenerator
 
@@ -44,8 +45,7 @@ class Model_Lightning_Shell(L.LightningModule):
             case "lstm":
                 self.inner_model = LSTM(args)
             case "transformer":
-                print("Support of Transformer model will be added in the future")
-                assert True, "Transformer is not supported now"
+                self.inner_model = Transformer_Model(args)
 
         self.metric = CharErrorRate()
         self.vca = VowelsConsonantsAlternation_Metric()
@@ -253,18 +253,18 @@ class VowelsConsonantsAlternation_Metric:
             self.vowels = [
                 "a", "e", "i", "o", "u", "y",
             ]
-            self.conconants = [
+            self.consonants = [
                 "b", "c", "d", "f", "g", "h", "j", "k", "l", "m", "n", "p", "q", "r", "s", "t", "v", "w", "x", "z"
             ]
 
         if tokenizer is not None:
             self.vowels = [tokenizer.encode(char) for char in self.vowels]
-            self.conconants = [tokenizer.encode(char) for char in self.conconants]
+            self.consonants = [tokenizer.encode(char) for char in self.consonants]
             self.pad = tokenizer.pad_value
             self.mode = "tokens"
 
     def __call__(self, word_orig) -> float:
-        word = [char for char in word_orig if char in self.vowels or char in self.conconants]
+        word = [char for char in word_orig if char in self.vowels or char in self.consonants]
 
         sum_plus = 0
         sum_minus = 0

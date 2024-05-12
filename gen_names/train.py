@@ -1,7 +1,7 @@
 import hydra
 from hydra.core.config_store import ConfigStore
 
-from gen_names.config import Params, MambaModel, LSTMModel, Scheduler_ReduceOnPlateau, Scheduler_OneCycleLR
+from gen_names.config import Params, MambaModel, LSTMModel, TransformerModel, Scheduler_ReduceOnPlateau, Scheduler_OneCycleLR
 from gen_names.models.shell import Model_Lightning_Shell, NameGenLogging
 from gen_names.data import NamesDataModule
 
@@ -19,6 +19,7 @@ cs = ConfigStore.instance()
 cs.store(name="params", node=Params)
 cs.store(group="model", name="base_mamba", node=MambaModel)
 cs.store(group="model", name="base_lstm", node=LSTMModel)
+cs.store(group="model", name="base_tr", node=TransformerModel)
 cs.store(group="scheduler", name="base_rop", node=Scheduler_ReduceOnPlateau)
 cs.store(group="scheduler", name="base_oclr", node=Scheduler_OneCycleLR)
 

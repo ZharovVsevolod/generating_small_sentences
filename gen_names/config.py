@@ -18,6 +18,13 @@ class LSTMModel(Model):
     dropout: float
 
 @dataclass
+class TransformerModel(Model):
+    nhead: int
+    dim_feedforward: int
+    dropout: float
+    emb_dropout: float
+
+@dataclass
 class Scheduler:
     name: str
 
