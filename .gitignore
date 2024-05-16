@@ -5,4 +5,3 @@ outputs/
 tests/hydra_tests.py
 tests/test_data.py
 tests/test_torch.py
-tests/test_true_and_my_mamba.py
