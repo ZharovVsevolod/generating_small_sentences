@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Any, List
 import torch
 import heapq
 import numpy as np
@@ -157,3 +157,145 @@ class BeamGenerator:
             final_scores, result = zip(*result)
         
         return result
+
+class TextGenerator:
+    def __init__(
+            self,
+            model:Any,
+            tokenizer:Any,
+            banned_idx:List[int]|None = None,
+            device:Literal["cpu", "cuda"] = "cuda",
+            eos_token_id:int = 3,
+        ) -> None:
+        self.model = model
+        self.tokenizer = tokenizer
+        if banned_idx is None:
+            banned_idx = [tokenizer.pad_value]
+        self.banned_idx = banned_idx.copy()
+        self.banned_idx_origin = banned_idx.copy()
+
+        self.repeat_tokens = {}
+
+        self.device = device
+        self.eos_token_id = eos_token_id
+
+    def phrase_to_tensor(self, phrase:str) -> torch.Tensor:
+        text = self.tokenizer.encode(phrase)
+        text = torch.Tensor(text).to(torch.int).unsqueeze(0).to(self.device)
+        return text
+    
+    def choose_idx(self, sa_cs: torch.Tensor) -> int:
+        rd = torch.rand(1).to(self.device)
+        ch = 0
+        for i in range(len(sa_cs)):
+            if sa_cs[i] > rd:
+                ch = i
+                break
+        return ch
+    
+    def cut_sort(self, sort:torch.Tensor, N:int) -> torch.Tensor:
+        sort_cut = sort[:N]
+        removed_all_time = 0
+        while True:
+            been_removed = 0
+            for i in range(len(sort_cut)-1):
+                try:
+                    if sort_cut[i] in self.banned_idx:
+                        sort_cut = torch.cat([sort_cut[:i], sort_cut[i+1:]])
+                        been_removed += 1
+                except:
+                    pass
+            if sort_cut[-1] in self.banned_idx:
+                sort_cut = sort_cut[:-1]
+                been_removed += 1
+            
+            if been_removed > 0:
+                sort_cut = torch.cat([
+                    sort_cut, 
+                    sort[N+removed_all_time : N+removed_all_time+been_removed]
+                ])
+                removed_all_time += been_removed
+            
+            if been_removed == 0:
+                break
+
+        return sort_cut
+    
+    def check_repeat(self, token:int, max_repeat:int) -> bool:
+        try:
+            how_many = self.repeat_tokens[token]
+            if how_many < max_repeat:
+                self.repeat_tokens[token] += 1
+            else:
+                return False
+        except:
+            if max_repeat > 1:
+                self.repeat_tokens[token] = 1
+            else:
+                return False
+        return True
+
+    def gen_tk(self, phrase: torch.Tensor, N:int) -> torch.Tensor:
+        answer = self.model(phrase)[0][-1]
+        sort = torch.argsort(answer, descending=True)
+        sort_cut = self.cut_sort(sort, N)
+
+        sort_answer = []
+        answer = answer.softmax(dim=0)
+        for s in sort_cut:
+            sort_answer.append(answer[s])
+        sort_answer = torch.stack(sort_answer)
+        sa_cumsum = (sort_answer / sort_answer.sum()).cumsum(dim=0)
+
+        ch_num = self.choose_idx(sa_cumsum)
+        idx = sort_cut[ch_num]
+
+        return idx
+    
+    def gen_tn(self, phrase: torch.Tensor, k:float) -> torch.Tensor:
+        answer = self.model(phrase)[0][-1]
+        sort = torch.sort(answer, descending=True)
+
+        sw_cumsum = sort.values.softmax(dim=0).cumsum(dim=0)
+
+        for i in range(len(sw_cumsum)):
+            if sw_cumsum[i] > k:
+                break
+        
+        sort_cut = self.cut_sort(sort.indices, i+1)
+
+        sw_cut = sort.values.softmax(dim=0)[:i]
+        sa_cumsum = (sw_cut / sw_cut.sum()).cumsum(dim=0)
+
+        ch_num = self.choose_idx(sa_cumsum)
+        idx = sort_cut[ch_num]
+
+        return idx
+
+    def generate(
+            self, 
+            phrase:str = "F",
+            mode:Literal["top_k", "top_n"] = "top_k",
+            k:int = 5,
+            n:float = 0.9,
+            max_len:int = 16,
+            max_repeat:int|None = None
+        ) -> str:
+        for _ in range(max_len):
+            phrase_ts = self.phrase_to_tensor(phrase)
+            
+            if mode == "top_k":
+                next_idx = self.gen_tk(phrase_ts, k)
+            if mode == "top_n":
+                next_idx = self.gen_tn(phrase_ts, n)
+
+            if next_idx == self.eos_token_id:
+                break
+            phrase = phrase + self.tokenizer.decode([next_idx])
+
+            if max_repeat is not None:
+                if not self.check_repeat(next_idx.item(), max_repeat):
+                    self.banned_idx.append(next_idx.item())
+        
+        self.banned_idx = self.banned_idx_origin.copy()
+        return phrase
