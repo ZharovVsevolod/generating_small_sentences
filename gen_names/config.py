@@ -1,3 +1,4 @@
+from typing import Literal
 from dataclasses import dataclass
 
 @dataclass
@@ -58,6 +59,11 @@ class Training:
 
 @dataclass
 class Generation:
+    mode: Literal["top_k", "top_n"]
+    k: int
+    n: float
+    max_len: int
+    max_repeat: int|None
     temperature: float
     alpha: float
     train_reweight: bool

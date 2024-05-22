@@ -14,7 +14,7 @@ from gen_names.models.mamba import Mamba
 from gen_names.models.lstm import LSTM
 from gen_names.models.transformer import Transformer_Model
 
-from gen_names.generators import BeamGenerator
+from gen_names.generators import BeamGenerator, TextGenerator
 
 def conversion_args_to_true_mamba(args: Params):
     true_args = ModelArgs(
@@ -193,49 +193,43 @@ class NameGenLogging(L.Callback):
         self.male_name_start = "M"
         self.female_name_start = "F"
     
-    def generation(self, generator:BeamGenerator, pl_module: Model_Lightning_Shell, male:bool = True):
+    def generation(
+            self, 
+            generator:TextGenerator, 
+            pl_module:Model_Lightning_Shell, 
+            male:bool = True
+        ):
         if male:
-            start_name = pl_module.tokenizer.encode(self.male_name_start)
+            start_name = self.male_name_start
         else:
-            start_name = pl_module.tokenizer.encode(self.female_name_start)
-        
-        gens = generator(
-            seed_text = start_name,
-            beamsize = pl_module.args.generation.beamsize,
-            max_steps_n = pl_module.args.data.chunk_size,
-            return_hypotheses_n = 2,
-            need_reweight = pl_module.args.generation.val_reweight,
-            temperature = pl_module.args.generation.temperature,
-            alpha = pl_module.args.generation.alpha,
-            without_score = True,
-            need_to_encode = False
+            start_name = self.female_name_start
+
+        gens = generator.generate(
+            phrase = start_name, 
+            mode = pl_module.args.generation.mode,
+            n = pl_module.args.generation.n,
+            max_len = pl_module.args.generation.max_len, 
+            max_repeat = pl_module.args.generation.max_repeat
         )
+
         return gens
 
-    def generation_and_log(self, pl_module: Model_Lightning_Shell, stage: Literal["train", "val"]):
-        if pl_module.args.model.name == "mamba" or pl_module.args.model.name == "true_mamba":
-            min_len = pl_module.args.model.d_conv
-        else:
-            min_len = 1
-
-        beam_gen = BeamGenerator(
-            model = pl_module, 
+    def generation_and_log(self, pl_module: Model_Lightning_Shell):
+        beam_gen = TextGenerator(
+            model = pl_module,
             tokenizer = pl_module.tokenizer,
-            eos_token_id = 3,
-            min_lenght = min_len,
-            pad_value = pl_module.tokenizer.pad_value
+            banned_idx = [0, 1, 2, 30, 31],
+            device = pl_module.device,
+            eos_token_id = 3
         )
 
         male_gens = self.generation(beam_gen, pl_module, male = True)
         female_gens = self.generation(beam_gen, pl_module, male = False)
 
-        pl_module.logger.log_text(key = f"Gen names {stage}", columns = ["male", "female"], data = [male_gens, female_gens])
+        pl_module.logger.log_text(key = f"Gen names", columns = ["male", "female"], data = [[male_gens, female_gens]])
     
     def on_validation_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        self.generation_and_log(pl_module, stage = "val")
-    
-    def on_train_epoch_end(self, trainer: L.Trainer, pl_module: L.LightningModule) -> None:
-        self.generation_and_log(pl_module, stage = "train")
+        self.generation_and_log(pl_module)
 
 class VowelsConsonantsAlternation_Metric:
     """Метрика для подсчёта, насколько читаемо получилось слово\n

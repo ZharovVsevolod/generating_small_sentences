@@ -16,6 +16,11 @@ data:
   chunk_size: 10
 
 generation:
+  mode: top_n
+  n: 0.85
+  k: 5
+  max_len: 9
+  max_repeat: 2
   temperature: 0.5
   alpha: 0.05
   train_reweight: False

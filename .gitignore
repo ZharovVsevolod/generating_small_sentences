@@ -5,3 +5,6 @@ outputs/
 tests/hydra_tests.py
 tests/test_data.py
 tests/test_torch.py
+tests/test_tr.py
+gen_names/deprecated.py
+tests/model_test.py
